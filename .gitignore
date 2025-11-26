@@ -1,0 +1,49 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+
+# Testing/Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Rust build artifacts
+rust/target/
+Cargo.lock
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local batch files (personal workflow helpers)
+goApp.bat
+goVenv.bat
+prepare.bat
+runcli.bat
+
+# Compiled extension modules (users build their own)
+*.so
+*.dll
+*.dylib
+src/ecc_model/_rs*.pyd
+src/ecc_model/_rs*.so
+
+# Maturin/wheel build
+*.whl
+.maturin/

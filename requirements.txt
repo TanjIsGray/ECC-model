@@ -1,0 +1,2 @@
+# No Python dependencies; RS codec is provided by the Rust extension.
+# Build the extension with: maturin develop -m rust/Cargo.toml

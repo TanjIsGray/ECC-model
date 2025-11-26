@@ -1,0 +1,25 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ecc-model"
+version = "0.1.0"
+description = "ECC_model: CLI to evaluate Reed-Solomon correction stats"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Tanj", email = "" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/TanjIsGray/ECC_model"
+
+[project.scripts]
+ecc-model = "ecc_model.cli:main"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+python-source = "src"
+module-name = "ecc_model._rs"
+features = ["pyo3/extension-module"]
