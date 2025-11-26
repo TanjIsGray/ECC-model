@@ -4,9 +4,9 @@ import os
 import random
 import csv
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List
 from .rs import get_codec, DecodeError
-from .fault_model import FaultDistribution, Fault, generate_fault, apply_fault, DEFAULT_FAULT_DISTRIBUTION
+from .fault_model import FaultDistribution, generate_fault, apply_fault, DEFAULT_FAULT_DISTRIBUTION
 
 
 @dataclass(frozen=True)
@@ -17,9 +17,6 @@ class RSConfig:
     @property
     def nsym(self) -> int:
         return self.n - self.k
-
-    # Kept for compatibility; not used by the new flow.
-    # def build_codec(self) -> RSCodec: ...
 
 
 def get_default_rs_configs() -> List[RSConfig]:
@@ -75,9 +72,9 @@ class FaultModelCounters:
     total_trials: int = 0
     by_type: dict = field(default_factory=lambda: {
         "single_bit_1sym": TrialCounters(),
-        "random_8bit_1sym": TrialCounters(),
-        "random_8bit_2sym": TrialCounters(),
-        "random_8bit_4sym": TrialCounters(),
+        "8bit_1sym": TrialCounters(),
+        "8bit_2sym": TrialCounters(),
+        "8bit_4sym": TrialCounters(),
         "out_of_model": TrialCounters(),
     })
 
@@ -233,6 +230,7 @@ def run_fault_model_trials(
     seed: int | None,
     dist: FaultDistribution | None = None,
     reuse_every: int = 13,
+    correlated: bool = False,
 ) -> FaultModelCounters:
     """
     Run trials using the DRAM subarray fault model.
@@ -243,6 +241,7 @@ def run_fault_model_trials(
         seed: PRNG seed (None for random)
         dist: Fault distribution (None for default)
         reuse_every: Regenerate message every N trials
+        correlated: Enable correlated data/metadata faults
     
     Returns:
         FaultModelCounters with results broken down by fault type
@@ -264,7 +263,7 @@ def run_fault_model_trials(
             base_codeword = codec.encode(base_message)
         
         # Generate and apply fault
-        fault = generate_fault(config.n, dist, rng)
+        fault = generate_fault(config.n, config.k, dist, rng, correlated=correlated)
         mesecc = bytearray(base_codeword)
         apply_fault(mesecc, fault)
         
@@ -285,8 +284,8 @@ def run_fault_model_trials(
 
 def write_csv(rows: List[List[str]], out_path: str) -> None:
     headers = [
-        "n","k","nsym","trials","corrected_ok","uncorrectable","silent_corruption",
-        "corrected_rate","uncorrectable_rate","silent_rate",
+        "n","k","nsym","trials","corrected","uncorrected","silent",
+        "corrected_rate","uncorrected_rate","silent_rate",
     ]
     if out_path == "-":
         writer = csv.writer(os.sys.stdout)
@@ -301,8 +300,8 @@ def write_csv(rows: List[List[str]], out_path: str) -> None:
 
 def write_fault_model_csv(rows: List[List[str]], out_path: str) -> None:
     headers = [
-        "n","k","nsym","fault_type","trials","corrected_ok","uncorrectable","silent_corruption",
-        "corrected_rate","uncorrectable_rate","silent_rate",
+        "n","k","nsym","fault_type","trials","corrected","uncorrected","silent",
+        "corrected_rate","uncorrected_rate","silent_rate",
     ]
     if out_path == "-":
         writer = csv.writer(os.sys.stdout)

@@ -70,8 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--rs-codes",
         action="append",
-        choices=["34,32", "36,32", "68,64", "72,64"],
-        help="Restrict to specific codes; may be provided multiple times. Default: all",
+        help="RS codes to test: 34,32 | 36,32 | 68,64 | 72,64 | ALL. May be repeated. Default: ALL",
     )
     parser.add_argument(
         "--dist",
@@ -82,6 +81,13 @@ def build_parser() -> argparse.ArgumentParser:
              "single-bit-1sym, random-8bit-1sym, random-8bit-2sym, random-8bit-4sym, out-of-model. "
              "Default: 9000,800,100,50,50",
     )
+    parser.add_argument(
+        "--correlated",
+        action="store_true",
+        default=False,
+        help="Enable correlated data/metadata faults. Probability = nsym/k "
+             "(e.g., 2/32 for RS(34,32)). Single-bit faults do not participate.",
+    )
     return parser
 
 
@@ -89,9 +95,16 @@ def parse_rs_selection(args) -> List[RSConfig]:
     all_cfgs = get_default_rs_configs()
     if not args.rs_codes:
         return all_cfgs
+    # Check for ALL (case-insensitive)
+    for code in args.rs_codes:
+        if code.upper() == "ALL":
+            return all_cfgs
     selected = set(args.rs_codes)
     mapping = {f"{c.n},{c.k}": c for c in all_cfgs}
-    return [mapping[key] for key in [*selected] if key in mapping]
+    result = [mapping[key] for key in [*selected] if key in mapping]
+    if not result:
+        raise SystemExit(f"Invalid --rs-codes: {args.rs_codes}. Use 34,32 | 36,32 | 68,64 | 72,64 | ALL")
+    return result
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -112,6 +125,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 seed=args.seed,
                 dist=dist,
                 reuse_every=max(1, args.reuse_every),
+                correlated=args.correlated,
             )
             rows.extend(counters.to_rows(cfg))
         write_fault_model_csv(rows, args.csv_out)

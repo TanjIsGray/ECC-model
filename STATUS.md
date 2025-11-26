@@ -1,43 +1,34 @@
-## ECC_model — Status and Next Steps
+## ECC_model — Status
 
-### Summary
-- XOR fault injection at selectable positions (supports multiple errors).
-- Random mode with message reuse (default every 13 trials) to reduce overhead.
-- Exhaustive single‑error mode iterates all positions × 255 non‑zero patterns.
-- Correction positions exposed via a unified codec API (Rust pyo3 extension).
-- CLI flags:
-  - `--errors`, `--reuse-every`, `--mode {random|exhaustive}`, `--rs-codes`, `--trials`, `--seed`, `--csv-out`.
+### Implemented
+- Native Rust RS codec (GF(256), Berlekamp-Massey, Chien search, Forney algorithm)
+- DRAM subarray fault model with configurable distribution
+- Correlated data/metadata faults (probability = nsym/k)
+- Three test modes: fault-model (default), random, exhaustive
+- CSV output with per-fault-type breakdown
 
-### Quickstart
-1) Python setup
-   - Create/activate venv, then:
-   - `pip install -U pip`
-   - `pip install maturin`
-   - `maturin develop -m rust/Cargo.toml`
-   - `pip install -e .`
-2) Run
-   - `ecc-model --mode random --trials 1000 --csv-out -`
+### CLI Flags
+- `--mode {fault-model|random|exhaustive}` — test mode
+- `--dist 1BIT,1SYM,2SYM,4SYM,OTHER` — fault distribution counts
+- `--correlated` — enable correlated metadata faults
+- `--rs-codes {34,32|36,32|68,64|72,64|ALL}` — RS codes to test
+- `--trials N` — number of trials
+- `--seed N` — PRNG seed
+- `--csv-out PATH` — output file (- for stdout)
 
-### Notes
-- If `pip install -e .` fails with TOML parse errors, ensure `pyproject.toml` is UTF‑8 without BOM.
-
-### Next Steps (proposed)
-- Implement native Rust RS (GF(256) tables, Berlekamp–Massey, Chien, Forney) returning true error locations.
-- Add policy engine:
-  - Penalize/flag contiguous burst patterns (lengths 1/2/4) aligned to multiples of those lengths.
-  - Tune to reduce silent errors on real‑world fault distributions.
-- Add burst injectors:
-  - Deterministic: `--positions`, `--patterns`
-  - Patterned: `--burst {1|2|4}`, `--stride {1|2|4}`, `--start-align`
-- Reporting:
-  - Output corrected positions per trial (optional CSV/JSON stream mode).
-  - Summaries per burst length/alignment.
-- Tests/Benchmarks:
-  - Unit tests for codec and policy logic.
-  - Perf benchmarks across (n,k) configurations.
+### Fault Types
+| Name | Description |
+|------|-------------|
+| single_bit_1sym | 1 bit flip in 1 symbol |
+| 8bit_1sym | Random 8-bit pattern in 1 symbol |
+| 8bit_2sym | 2 contiguous symbols, 2-aligned |
+| 8bit_4sym | 4 contiguous symbols, 4-aligned |
+| out_of_model | 5-6 contiguous or 4+ scattered |
 
 ### Key Files
-- `src/ecc_model/core.py` — harness, counters, injection logic
-- `src/ecc_model/rs.py` — codec factory (Rust)
 - `src/ecc_model/cli.py` — CLI entry
-- `rust/` — pyo3 module `ecc_model._rs`
+- `src/ecc_model/core.py` — test harness, counters
+- `src/ecc_model/fault_model.py` — fault distribution and generation
+- `src/ecc_model/rs.py` — codec wrapper
+- `rust/src/rs.rs` — RS encode/decode
+- `rust/src/gf256.rs` — GF(256) arithmetic

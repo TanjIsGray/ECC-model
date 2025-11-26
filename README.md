@@ -1,106 +1,86 @@
 ﻿# ECC_model
 
-ECC_model is a small CLI and library to evaluate Reed–Solomon (RS) error correction behavior on realistic fault patterns.
+ECC_model is a CLI tool to evaluate Reed–Solomon (RS) error correction behavior using realistic DRAM fault models.
 
-It supports:
-- Random and exhaustive test modes
-- XOR-based fault injection at selectable positions (1+ error symbols)
-- Message reuse to reduce encode overhead
-- Reporting of corrected symbol positions
+## Features
+- **Fault model mode**: Simulates DRAM subarray faults with configurable distribution
+- **Correlated faults**: Models metadata corruption correlated with data faults
+- **Random and exhaustive test modes**
+- **Native Rust RS codec** via pyo3 (GF(256), Berlekamp-Massey, Chien, Forney)
 
-Tested RS codes:
-- (34,32), (36,32), (68,64), (72,64)
+Supported RS codes: (34,32), (36,32), (68,64), (72,64)
 
 ## Requirements
 - Python 3.12+
-- Windows, macOS, or Linux
 - Rust toolchain: `rustup` + `maturin`
 
 ## Quick Start
 
-Windows CMD:
-```bat
-cd C:\path\to\ECC_model
+```bash
+# Clone and setup
+cd ECC_model
 python -m venv .venv
-.\.venv\Scripts\activate
-python -m pip install -U pip
-pip install maturin
-maturin develop -m rust/Cargo.toml
-pip install -e .
+source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
+pip install -U pip maturin
+maturin develop
 ecc-model --help
 ```
 
-Windows PowerShell:
-```powershell
-cd C:\path\to\ECC_model
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-pip install maturin
-maturin develop -m rust/Cargo.toml
-pip install -e .
-ecc-model --help
-```
+## Usage
 
-macOS/Linux:
+### Fault model mode (default)
+Simulates realistic DRAM fault distribution:
 ```bash
-cd /path/to/ECC_model
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-pip install maturin
-maturin develop -m rust/Cargo.toml
-pip install -e .
-ecc-model --help
+# Run with default distribution on all RS codes
+ecc-model --rs-codes ALL --trials 10000 --csv-out -
+
+# Custom fault distribution: 1bit, 1sym, 2sym, 4sym, other
+ecc-model --dist 9000,800,100,50,50 --trials 10000 --csv-out results.csv
+
+# Enable correlated data/metadata faults
+ecc-model --correlated --rs-codes 34,32 --trials 10000 --csv-out -
 ```
 
-If `ecc-model` is not found, try:
-```bat
-where ecc-model
-.\.venv\Scripts\ecc-model.exe --help
-```
-
-## Usage examples
-
-- Random mode, default 1 error per trial:
+### Random mode
+Uniform random symbol errors:
 ```bash
-ecc-model --mode random --trials 10000 --csv-out -
+ecc-model --mode random --errors 2 --trials 5000 --csv-out -
 ```
 
-- Random mode with multiple errors and message reuse:
+### Exhaustive mode
+All single-symbol error patterns:
 ```bash
-ecc-model --mode random --errors 3 --reuse-every 13 --trials 5000 --csv-out -
+ecc-model --mode exhaustive --rs-codes 34,32 --csv-out results.csv
 ```
 
-- Exhaustive single-error over all positions and 255 non-zero patterns:
-```bash
-ecc-model --mode exhaustive --csv-out results.csv
-```
+## Fault Distribution
 
-- Select RS codes to evaluate:
-```bash
-ecc-model --rs-codes 34,32 --rs-codes 68,64 --mode random --trials 2000 --csv-out -
-```
+Default distribution (per 10,000 faults):
+| Type | Count | Description |
+|------|-------|-------------|
+| single_bit_1sym | 9000 | 1 symbol, 1 bit flipped |
+| 8bit_1sym | 800 | 1 symbol, random 8-bit pattern |
+| 8bit_2sym | 100 | 2 contiguous symbols (2-aligned) |
+| 8bit_4sym | 50 | 4 contiguous symbols (4-aligned) |
+| out_of_model | 50 | 5-6 contiguous or 4+ scattered |
 
-## Project layout
+## Project Layout
 ```
 src/ecc_model/
-  cli.py        # CLI entrypoint
-  core.py       # test harness, counters, injection logic
-  rs.py         # codec factory (Rust-backed)
-rust/
-  Cargo.toml
-  src/lib.rs    # pyo3 module exporting encode/decode with correction indices
-pyproject.toml  # package metadata
+  cli.py          # CLI entrypoint
+  core.py         # test harness, counters
+  fault_model.py  # DRAM fault distribution model
+  rs.py           # codec wrapper
+rust/src/
+  lib.rs          # pyo3 module
+  rs.rs           # RS encode/decode (Berlekamp-Massey)
+  gf256.rs        # GF(256) arithmetic
 ```
 
 ## Troubleshooting
 
-- ModuleNotFoundError: No module named 'ecc_model._rs'
-  - Build the Rust extension via `maturin develop -m rust/Cargo.toml` in the active venv.
+- **ModuleNotFoundError: No module named 'ecc_model._rs'**
+  Run `maturin develop` in the active venv.
 
-- Command not found: ecc-model
-  - Ensure your venv is active. On Windows, try `.\.venv\Scripts\ecc-model.exe --help`.
-
-## Notes on error patterns and policies
-The harness injects XOR faults at arbitrary codeword positions (data+ECC). You can explore policies aimed at real‑world contiguous bursts (lengths 1, 2, 4) aligned to multiples of those lengths by using multi‑error random injections and, later, custom injectors or filters over corrected positions.
+- **Command not found: ecc-model**
+  Ensure venv is active. Windows: `.\.venv\Scripts\ecc-model.exe --help`
