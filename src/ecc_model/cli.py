@@ -3,6 +3,7 @@ import sys
 from typing import List, Optional
 from .core import (
     RSConfig,
+    DecodePolicy,
     get_default_rs_configs,
     run_random_trials,
     run_exhaustive_single_symbol,
@@ -88,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable correlated data/metadata faults. Probability = nsym/k "
              "(e.g., 2/32 for RS(34,32)). Single-bit faults do not participate.",
     )
+    parser.add_argument(
+        "--enforce-contiguous-locations",
+        action="store_true",
+        default=False,
+        help="Treat decode results with non-contiguous correction locations as suspected false corrections.",
+    )
     return parser
 
 
@@ -110,6 +117,7 @@ def parse_rs_selection(args) -> List[RSConfig]:
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     configs = parse_rs_selection(args)
+    decode_policy = DecodePolicy(enforce_contiguous_locations=args.enforce_contiguous_locations)
 
     if args.mode == "fault-model":
         dist = args.dist if args.dist is not None else FaultDistribution()
@@ -126,6 +134,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 dist=dist,
                 reuse_every=max(1, args.reuse_every),
                 correlated=args.correlated,
+                decode_policy=decode_policy,
             )
             rows.extend(counters.to_rows(cfg))
         write_fault_model_csv(rows, args.csv_out)
@@ -139,11 +148,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                     seed=args.seed,
                     num_errors=max(1, args.errors),
                     reuse_every=max(1, args.reuse_every),
+                    decode_policy=decode_policy,
                 )
             else:  # exhaustive
                 if args.errors != 1:
                     raise SystemExit("exhaustive mode supports only --errors=1")
-                counters = run_exhaustive_single_symbol(cfg, seed=args.seed)
+                counters = run_exhaustive_single_symbol(cfg, seed=args.seed, decode_policy=decode_policy)
             rows.append(counters.to_row(cfg))
         write_csv(rows, args.csv_out)
     return 0

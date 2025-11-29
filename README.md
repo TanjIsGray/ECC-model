@@ -53,6 +53,13 @@ All single-symbol error patterns:
 ecc-model --mode exhaustive --rs-codes 34,32 --csv-out results.csv
 ```
 
+### Enforce contiguous correction spans
+Flag decode attempts that report scattered correction locations:
+```bash
+ecc-model --enforce-contiguous-locations --mode fault-model --trials 5000 --csv-out -
+```
+When enabled, any decode that reports non-contiguous correction locations is treated as a suspected false correction (counted as silent corruption).
+
 ## Fault Distribution
 
 Default distribution (per 10,000 faults):

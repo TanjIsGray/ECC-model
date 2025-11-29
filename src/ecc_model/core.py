@@ -4,7 +4,7 @@ import os
 import random
 import csv
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Sequence
 from .rs import get_codec, DecodeError
 from .fault_model import FaultDistribution, generate_fault, apply_fault, DEFAULT_FAULT_DISTRIBUTION
 
@@ -17,6 +17,22 @@ class RSConfig:
     @property
     def nsym(self) -> int:
         return self.n - self.k
+
+
+@dataclass(frozen=True)
+class DecodePolicy:
+    """Decode-time guardrails."""
+
+    enforce_contiguous_locations: bool = False
+
+
+@dataclass(frozen=True)
+class DecodeOutcome:
+    """Result of a decode attempt."""
+
+    corrected: bool | None
+    silent: bool = False
+    suspect_locations: bool = False
 
 
 def get_default_rs_configs() -> List[RSConfig]:
@@ -133,6 +149,40 @@ class FaultModelCounters:
         return rows
 
 
+def positions_contiguous(positions: Sequence[int]) -> bool:
+    """Return True when the provided positions form a contiguous run."""
+    if len(positions) < 2:
+        return True
+    ordered = sorted(positions)
+    return all((b - a) == 1 for a, b in zip(ordered, ordered[1:]))
+
+
+def decode_with_policy(codec, received: bytes, reference: bytes, policy: DecodePolicy) -> DecodeOutcome:
+    """
+    Decode helper that enforces policy checks before classifying the outcome.
+    """
+    try:
+        decoded, positions = codec.decode(received)
+    except DecodeError:
+        return DecodeOutcome(corrected=False)
+    suspect = policy.enforce_contiguous_locations and not positions_contiguous(positions)
+    if suspect:
+        return DecodeOutcome(corrected=None, silent=True, suspect_locations=True)
+    if decoded == reference:
+        return DecodeOutcome(corrected=True)
+    return DecodeOutcome(corrected=None, silent=True)
+
+
+def update_trial_counters(outcome: DecodeOutcome, counters: TrialCounters) -> None:
+    """Map a DecodeOutcome into aggregate trial counters."""
+    if outcome.corrected is True:
+        counters.add_corrected()
+    elif outcome.corrected is False:
+        counters.add_uncorrectable()
+    else:
+        counters.add_silent()
+
+
 def generate_message(k: int, rng: random.Random) -> bytes:
     return rng.randbytes(k) if hasattr(rng, "randbytes") else bytes(rng.getrandbits(8) for _ in range(k))
 
@@ -167,10 +217,12 @@ def run_random_trials(
     seed: int | None,
     num_errors: int = 1,
     reuse_every: int = 13,
+    decode_policy: DecodePolicy | None = None,
 ) -> TrialCounters:
     rng = random.Random(seed)
     counters = TrialCounters()
     codec = get_codec(nsym=config.nsym, nsize=config.n)
+    policy = decode_policy or DecodePolicy()
 
     # Reuse underlying message (and base encoded codeword) to reduce overhead
     base_message: bytes | None = None
@@ -186,21 +238,20 @@ def run_random_trials(
         patterns = choose_random_patterns(len(positions), rng)
         apply_xor_faults(mesecc, positions, patterns)
 
-        try:
-            decoded, _cor_positions = codec.decode(bytes(mesecc))
-        except DecodeError:
-            counters.add_uncorrectable()
-            continue
-        if decoded == base_message:
-            counters.add_corrected()
-        else:
-            counters.add_silent()
+        assert base_message is not None
+        outcome = decode_with_policy(codec, bytes(mesecc), base_message, policy)
+        update_trial_counters(outcome, counters)
     return counters
 
 
-def run_exhaustive_single_symbol(config: RSConfig, seed: int | None = None) -> TrialCounters:
+def run_exhaustive_single_symbol(
+    config: RSConfig,
+    seed: int | None = None,
+    decode_policy: DecodePolicy | None = None,
+) -> TrialCounters:
     counters = TrialCounters()
     codec = get_codec(nsym=config.nsym, nsize=config.n)
+    policy = decode_policy or DecodePolicy()
     # Use a random (but fixed-for-run) message in exhaustive mode
     rng = random.Random(seed)
     message = generate_message(config.k, rng)
@@ -212,15 +263,8 @@ def run_exhaustive_single_symbol(config: RSConfig, seed: int | None = None) -> T
             arr = bytearray(base_codeword)
             arr[pos] ^= pat
             mutated = bytes(arr)
-            try:
-                decoded, _cor_positions = codec.decode(mutated)
-            except DecodeError:
-                counters.add_uncorrectable()
-                continue
-            if decoded == message:
-                counters.add_corrected()
-            else:
-                counters.add_silent()
+            outcome = decode_with_policy(codec, mutated, message, policy)
+            update_trial_counters(outcome, counters)
     return counters
 
 
@@ -231,6 +275,7 @@ def run_fault_model_trials(
     dist: FaultDistribution | None = None,
     reuse_every: int = 13,
     correlated: bool = False,
+    decode_policy: DecodePolicy | None = None,
 ) -> FaultModelCounters:
     """
     Run trials using the DRAM subarray fault model.
@@ -242,6 +287,7 @@ def run_fault_model_trials(
         dist: Fault distribution (None for default)
         reuse_every: Regenerate message every N trials
         correlated: Enable correlated data/metadata faults
+        decode_policy: Optional guardrails for interpreting decoder output
     
     Returns:
         FaultModelCounters with results broken down by fault type
@@ -252,6 +298,7 @@ def run_fault_model_trials(
     rng = random.Random(seed)
     counters = FaultModelCounters()
     codec = get_codec(nsym=config.nsym, nsize=config.n)
+    policy = decode_policy or DecodePolicy()
     
     base_message: bytes | None = None
     base_codeword: bytes | None = None
@@ -268,16 +315,14 @@ def run_fault_model_trials(
         apply_fault(mesecc, fault)
         
         # Decode and record result
-        try:
-            decoded, _cor_positions = codec.decode(bytes(mesecc))
-        except DecodeError:
-            counters.add_result(fault.fault_type, corrected=False)
-            continue
-        
-        if decoded == base_message:
+        assert base_message is not None
+        outcome = decode_with_policy(codec, bytes(mesecc), base_message, policy)
+        if outcome.corrected is True:
             counters.add_result(fault.fault_type, corrected=True)
+        elif outcome.corrected is False:
+            counters.add_result(fault.fault_type, corrected=False)
         else:
-            counters.add_result(fault.fault_type, corrected=None, silent=True)
+            counters.add_result(fault.fault_type, corrected=None, silent=outcome.silent or outcome.suspect_locations)
     
     return counters
 
