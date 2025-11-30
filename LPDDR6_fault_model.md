@@ -2,7 +2,7 @@
 
 This note distills guidance from the 2025 EE Times article **“LPDDR6 Balances Performance, Power, and Security”** (see [eetimes.com](https://www.eetimes.com/lpddr6-balances-performance-power-and-security/)) together with published 2024 reliability studies by Google and AMD on large cloud clusters. It captures how LPDDR6 structures metadata, why certain error patterns correlate, and how ECC_model parameterizes those observations for simulation.
 
-![LPDDR6 fault correlation diagram](<LPDDR-6 from eeTimes-1.svg>)
+![LPDDR6 fault correlation diagram](<LPDDR-6 from eeTimes.svg>)
 
 ## Metadata Structure and Correlated Faults
 
@@ -60,7 +60,7 @@ The sequential correlation problem can be avoided by running two banks in parall
 
 LPDDR6 includes an internal single-bit ECC mechanism which uses a 17th sub-array to provide 16 ECC bits.  This is exactly the same size as the carve-out for metadata.  If the metadata is being used for ECC, which is by far the most important purpose, then the round-trip ECC provided by the host chip will correct all the single-bit errors with superior reliability, so this 17th subarray could be put to better use as the metadata (round-trip ECC) storage.
 
-![Alternate construction using the hidden and redundant 17th subarray](<LPDDR-6 from eeTimes using internal ECC-1.svg>)
+![Alternate construction using the hidden and redundant 17th subarray](<LPDDR-6 from eeTimes using internal ECC.svg>)
 
 This not only eliminates correlation for 8-, 16-, and 32-bit errors.  It would also run faster than the current ECC design since separate read-before and write-after operations are not needed.  And it would return the data to full capacity.
 
