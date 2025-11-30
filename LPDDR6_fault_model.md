@@ -2,27 +2,31 @@
 
 This note distills guidance from the 2025 EE Times article **“LPDDR6 Balances Performance, Power, and Security”** (see [eetimes.com](https://www.eetimes.com/lpddr6-balances-performance-power-and-security/)) together with published 2024 reliability studies by Google and AMD on large cloud clusters. It captures how LPDDR6 structures metadata, why certain error patterns correlate, and how ECC_model parameterizes those observations for simulation.
 
-![LPDDR6 fault correlation diagram](lpddr6_fault_model.svg)
+![LPDDR6 fault correlation diagram](<LPDDR-6 from eeTimes-1.svg>)
 
 ## Metadata Structure and Correlated Faults
 
-LPDDR6 maintains per-word metadata—training state, parity, command history, and integrity bits—adjacent to data bursts. When sense-amp anomalies, word-line shorts, or local power droops strike a subarray, both the data word and its companion metadata slice can be disturbed together. In ECC_model this is represented by the `--correlated` option: primary faults start in data symbols, and with probability `nsym/k` an aligned metadata span of the same width is injected. This mirrors the observation that metadata capacity is limited (typically ≤4 parity symbols) and cannot protect against *simultaneous* wide corruptions.
+The EETimes article explains that metadata is carved out of the 16 data subarrays (which the article wrongly labels as banks, a different concept in DRAM chips).  Each subarray contributes two bytes for a total of 32 bytes which flow on a bus internal to the DRAM.  This subtracts from the amound of data in the DRAM (1/16th of capacity is lost) and requires extra commands to fetch metadata into registers before reading data, and to write back the metadata after data has been written.  The metadata is buffered in special MDR registers internal to the DRAM.  This metadata is not required to be used for round-trip ECC by the host chip, but that is a necessary feature if LPDDR6 is to be used for reliable large memories.
+
+I redrew the diagram to illustrate the relationship between the data, metadata, and various kinds of multi-bit error.  I will go into that in a moment, but first let's take a brief detour to explain the error patterns most often found in DRAM chips.
 
 ## Field Data: Fault Rate and Composition
 
-The Google/AMD 2024 fleet studies reported on the order of **1e2 faults per 1e9 device-hours**—already a highly reliable regime. Roughly **90 %** of observed events were isolated single-bit flips; the remaining **10 %** were multi-bit bursts. The key implication is that multi-bit events vastly exceed the rate expected from coincidental single-bit overlaps (which would demand ≈10¹⁴ operating hours for comparable likelihood). Therefore multi-bit failures must originate from common-mode mechanisms baked into DRAM operation (e.g., local coupling, timing margin interactions, or peripheral logic upsets) and deserve first-class modeling.
+DRAMs are extraordinarily reliable.  Manufacturers do not disclose their fault rates so we must rely upon field studies.  The most recent large-scale study was by Google and AMD in 2023 (DOI: 10.1109/HPCA56546.2023.10071066) for DDR4 chips and showed on the order of **1e2 faults per 1e9 device-hours**. Roughly **90 %** of observed events were isolated single-bit flips; the remaining **10 %** were multi-bit bursts.  Multi-bit events originate from common-mode mechanisms baked into DRAM designs in drivers or structures controlling rows of data cells or sets of sense amplifiers, as well as addressing errors.
 
 ## Fault Classes Captured in ECC_model
 
 To reflect LPDDR6 realities while staying tractable, we group faults into five classes:
 
-- **Single-bit / 1 symbol** – Truly random bit flips within a byte. Dominant but usually correctable.
-- **8-bit / 1 symbol** – Full-byte corruption from sense-amp or write-back disturbances.
-- **8-bit / 2 symbols (16 bits)** – Two aligned bytes, commonly sharing a word-line driver.
-- **8-bit / 4 symbols (32 bits)** – Four aligned bytes, covering the widest contiguous region ECC hardware can realistically repair.
-- **Other** – Everything larger or topologically complex (5–6 contiguous bytes, scattered shorts, rowhammer-induced mosaics). LPDDR6 ECC cannot correct these (requires >4 parity symbols), so they are collectively treated as uncorrectable tails.
+- **Single-bit / 1 symbol** – Truly random bit flips within a byte.  The most common kind of errors, and correctable by internal SECDED (Hamming) ECC in the LPDDR6 chip.
+- **8-bit / 1 symbol** – Faults which affect a row of bits or controls on one half of a sub-array.  Up to 8 bits will be flipped, depending on the data pattern (since the fault will usually force the bits to zero or to one, which may agree or disagree with the data).
+- **16-bit / 2 symbols** – Two bytes, one on each side of a sub-array, commonly sharing a word-line driver or column select logic which control how the sense amplifiers are used.
+- **8-bit / 4 symbols** – Four bytes, which may occur if pairs of sub-array share control circuits.
+- **Other** – Alternates between 8 contiguous bytes (8-aligned) and 5 scattered bytes spanning unrelated sub-arrays. These capture the “everything else” space where LPDDR6 cannot correct the error and vendors rarely share statistics.
 
-Anything beyond four contiguous symbols is automatically swept into “other,” matching the practical correction budget of LPDDR6 controllers.
+## Compare to the diagram
+
+If you look back at the diagram you can see an indication of how 8-bit, 16-bit, and 32-bit faults could relate to the sub-arrays of the LPDDR6
 
 ## Default Probability Distribution
 
@@ -31,14 +35,41 @@ ECC_model encodes probabilities via integer counts that sum to 10 000 and can 
 | Fault class      | Description                           | Count | Probability |
 |------------------|---------------------------------------|-------|-------------|
 | single_bit_1sym  | 1 bit in 1 symbol                     | 9000  | 90.0 %      |
-| 8bit_1sym        | 1 byte                                | 800   | 8.0 %       |
-| 8bit_2sym        | 2 contiguous bytes (2-aligned)        | 100   | 1.0 %       |
-| 8bit_4sym        | 4 contiguous bytes (4-aligned)        | 50    | 0.5 %       |
-| out_of_model     | ≥5 contiguous or scattered anomalies  | 50    | 0.5 %       |
+| 8bit_1sym        | 1 byte                                | 600   | 6.0 %       |
+| 8bit_2sym        | 2 contiguous bytes (2-aligned)        | 200   | 2.0 %       |
+| 8bit_4sym        | 4 contiguous bytes (4-aligned)        | 100   | 1.0 %       |
+| out_of_model     | ≥5 contiguous or scattered anomalies  | 100   | 1.0 %       |
 
-This mirrors the empirical 90 / 10 split while reserving explicit knobs for 16-bit and 32-bit bursts that designers often observe during corner testing.
+This mirrors the empirical 90 / 10 split while making a reasonable expectation that the larger errors are less common, something the DRAM vendors may be able to engineer by a combination of minimizing shared elements and giving those elements conservative design rules.
 
-## Data Gaps and Invitation
+The program allows these defaults to be changed with a command-line parameter.
 
-DRAM vendors seldom publish precise failure distributions—doing so requires massive fleets, exacting telemetry, and willingness to share. The numbers above therefore serve as a reasoned baseline, not gospel. ECC_model’s CLI accepts alternative distributions so researchers can plug in NDA data or future public studies. **Vendors and hyperscalers are encouraged to contribute refined statistics**, especially around correlated metadata faults, to sharpen this model for LPDDR6-era systems.
+## The implications for correlated metadata faults
 
+If you look back at the diagram you will notice that the 8-, 16-, and 32-bit fault causes are shown across the sub-array which includes across the metadata.  The metadata will thus share the same faults as the data.  As the carve-out takes 1/16th of the data, this in practice means that 1/16th of data transfers will be using metadata likely to echo the same fault cause as the data.  This means that the encoded data for those transfers is likely to double its error content.  A fault cause affecting 8 bits of data may have an 8-bit echo in the metadata.  This effect may also double-up 16-bit and 32-bit errors.  This makes them more difficult to correct.  If you choose the correlation option on the ECC_model program you will see the number of uncorrectable and silent errors increases and the Reed-Solomon code is not able to correct the errors you might assume it can, because in 1/16th of the cases it may be seeing double the number or errors.
+
+## The implications for sequential multi-burst transfers
+
+This effect also applies to sequential transfers, for example if you want to use a double-burst to represent 64 bytes of data.  A sequential burst is using the same row with just the column changed, which is to say using a different subset of the sense amps for the transfer.  It also will be correlated, but in this case the correlation risk is for 100% of transfers not just 1/16th since the two bursts will both sample all the subarrays and thus likely sample the same faults affecting half-array word lines or larger structures.
+
+Then the metadata correlation is stacked on top of that.
+
+The sequential correlation problem can be avoided by running two banks in parallel with the same commands, where "bank" in this case is used as per the LPDDR6 standard meaning of a separate set of data arrays.  Faults will not be correlated between such parallel 32-bit transfers.  It would be useful for LPDDR6 to optimize a parallel mirrored-command operating mode.
+
+## The use of a 17th subarray to avoid correlation
+
+LPDDR6 includes an internal single-bit ECC mechanism which uses a 17th sub-array to provide 16 ECC bits.  This is exactly the same size as the carve-out for metadata.  If the metadata is being used for ECC, which is by far the most important purpose, then the round-trip ECC provided by the host chip will correct all the single-bit errors with superior reliability, so this 17th subarray could be put to better use as the metadata (round-trip ECC) storage.
+
+![Alternate construction using the hidden and redundant 17th subarray](<LPDDR-6 from eeTimes using internal ECC-1.svg>)
+
+This not only eliminates correlation for 8-, 16-, and 32-bit errors.  It would also run faster than the current ECC design since separate read-before and write-after operations are not needed.  And it would return the data to full capacity.
+
+It is difficult to see any good reason for LPDDR6 to have adopted a complex, flawed, slower, and lower capacity alternative.  The 17th subarray is already known to everyone, and clearly available.
+
+The only explanation I have heard is "what about if there is an independent single-bit error in combination?".  But in combinations the internal ECC is inhibited so that makes no sense.
+
+A possible explanation is that there is competition for the internal ECC pathway, since making it modal will add a multiplexor, and that may be so.  Still it is a very minimal overhead and much less complexity and performance cost than the metadata register system.
+
+Perhaps the strongest explanation is the desire to make the metadata purpose undefined, but that seems simply failing to meet obligations of the standard.  It is essential for a product like LPDDR6 to have a strong commitment to reliability.  This is a chip that will be used pervasively around the world in perhaps the largest single DRAM category, including devices where safety is paramount.  The ECC arrangements should not be an afterthought, they should be integral to the standard, and the vendors are well aware that the internal single bit ECC is not adequate.  The clear main use case for metadata is ECC.  It is certainly the only use that could justify the complex engineering of the metadata system as found in the spec. Round-trip metadata for host-based ECC should be an explicit goal with its proper support ensured in the JEDEC specification.
+
+The reasons for the weak and costly metadata design in LPDDR6 are a mystery, and quite sad for all of us who could have expected a design with integrity from JEDEC for this very important standard.  A design destined to guide trillions of chips over the next decade deserves better.

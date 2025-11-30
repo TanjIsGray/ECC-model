@@ -148,6 +148,18 @@ class FaultModelCounters:
             ])
         return rows
 
+    def aggregate_totals(self) -> dict[str, int]:
+        """Return aggregate totals across all fault types."""
+        total_corrected = sum(c.corrected_ok for c in self.by_type.values())
+        total_uncorrectable = sum(c.uncorrectable for c in self.by_type.values())
+        total_silent = sum(c.silent_corruption for c in self.by_type.values())
+        return {
+            "trials": self.total_trials,
+            "corrected": total_corrected,
+            "uncorrectable": total_uncorrectable,
+            "silent": total_silent,
+        }
+
 
 def positions_contiguous(positions: Sequence[int]) -> bool:
     """Return True when the provided positions form a contiguous run."""

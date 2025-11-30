@@ -137,6 +137,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 decode_policy=decode_policy,
             )
             rows.extend(counters.to_rows(cfg))
+            totals = counters.aggregate_totals()
+            if totals["trials"] > 0:
+                tt = max(totals["trials"], 1)
+                rows.append([
+                    "summary",
+                    "",
+                    "",
+                    "all_fault_types",
+                    str(totals["trials"]),
+                    str(totals["corrected"]),
+                    str(totals["uncorrectable"]),
+                    str(totals["silent"]),
+                    f"{totals['corrected'] / tt:.6f}",
+                    f"{totals['uncorrectable'] / tt:.6f}",
+                    f"{totals['silent'] / tt:.6f}",
+                ])
+            rows.append([])
         write_fault_model_csv(rows, args.csv_out)
     else:
         rows = []
