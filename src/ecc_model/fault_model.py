@@ -25,7 +25,7 @@ Correlated faults (--correlated):
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Tuple
 import sys
 
@@ -52,7 +52,6 @@ class FaultDistribution:
     eight_bit_2sym: int = 200
     eight_bit_4sym: int = 100
     out_of_model: int = 100
-    _out_of_model_toggle: bool = field(default=False, init=False, repr=False)
 
     @property
     def total(self) -> int:
@@ -103,11 +102,6 @@ class FaultDistribution:
             eight_bit_4sym=values[3],
             out_of_model=values[4],
         )
-
-    def next_out_of_model_contiguous(self) -> bool:
-        """Return True/False, alternating each call for even coverage."""
-        self._out_of_model_toggle = not self._out_of_model_toggle
-        return self._out_of_model_toggle
 
 
 @dataclass
@@ -209,7 +203,9 @@ def generate_fault(
         fault_width = 4
     
     else:  # out_of_model
-        use_contiguous = dist.next_out_of_model_contiguous()
+        global _OUT_OF_MODEL_USE_CONTIGUOUS
+        use_contiguous = _OUT_OF_MODEL_USE_CONTIGUOUS
+        _OUT_OF_MODEL_USE_CONTIGUOUS = not _OUT_OF_MODEL_USE_CONTIGUOUS
         if use_contiguous:
             # 8-byte contiguous fault, 8-aligned
             if primary_region >= 8:
