@@ -18,7 +18,7 @@ Also, this analysis assumes data is random, there is no special consideration fo
 
 ## Field Data: Fault Rate and Composition
 
-DRAMs are extraordinarily reliable.  Manufacturers do not disclose their fault rates so we must rely upon field studies.  The most recent large-scale study was by Google and AMD in 2023 (**DOI: 10.1109/HPCA56546.2023.10071066**) for DDR4 chips and showed on the order of **1e2 faults per billion device-hours**. Roughly **90 %** of observed errors were isolated single-bit flips; the remaining **10 %** were multi-bit errors.  Multi-bit events originate from common-mode mechanisms baked into DRAM designs in drivers or structures controlling rows of data cells or sets of sense amplifiers, as well as addressing errors.
+DRAMs are extraordinarily reliable.  Manufacturers do not disclose their fault rates so we must rely upon field studies.  The most recent large-scale study was by Google and AMD in 2023 **(DOI: 10.1109/HPCA56546.2023.10071066)** for DDR4 chips and showed on the order of **1e2 faults per billion device-hours**. Roughly **90 %** of observed errors were isolated single-bit flips; the remaining **10 %** were multi-bit errors.  Multi-bit events originate from common-mode mechanisms baked into DRAM designs in drivers or structures controlling rows of data cells or sets of sense amplifiers, as well as addressing errors.
 
 ## Fault Classes Captured in ECC_model
 
