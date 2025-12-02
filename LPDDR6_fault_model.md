@@ -10,9 +10,15 @@ The EETimes article explains that metadata is carved out of the 16 data subarray
 
 I redrew the diagram to illustrate the relationship between the data, metadata, and various kinds of multi-bit error.  I will go into that in a moment, but first let's take a brief detour to explain the error patterns most often found in DRAM chips.
 
+## About faults, errors, and data
+
+Faults are the problems occuring in the chip.  Errors are observed in data as a result of faults.  Some parts of the data might agree with the fault, so in general errors show a subset of a fault.
+
+Also, this analysis assumes data is random, there is no special consideration for special cases like all-zeros and all-1s.  Most high reliability systems are like to scramble or encrypt bits, and in some cases the DRAMs may do that internally to minimize unbalanced signals, so simple special cases may not be as common as you might think from looking at plaintext.
+
 ## Field Data: Fault Rate and Composition
 
-DRAMs are extraordinarily reliable.  Manufacturers do not disclose their fault rates so we must rely upon field studies.  The most recent large-scale study was by Google and AMD in 2023 (DOI: 10.1109/HPCA56546.2023.10071066) for DDR4 chips and showed on the order of **1e2 faults per 1e9 device-hours**. Roughly **90 %** of observed events were isolated single-bit flips; the remaining **10 %** were multi-bit bursts.  Multi-bit events originate from common-mode mechanisms baked into DRAM designs in drivers or structures controlling rows of data cells or sets of sense amplifiers, as well as addressing errors.
+DRAMs are extraordinarily reliable.  Manufacturers do not disclose their fault rates so we must rely upon field studies.  The most recent large-scale study was by Google and AMD in 2023 (**DOI: 10.1109/HPCA56546.2023.10071066**) for DDR4 chips and showed on the order of **1e2 faults per billion device-hours**. Roughly **90 %** of observed errors were isolated single-bit flips; the remaining **10 %** were multi-bit errors.  Multi-bit events originate from common-mode mechanisms baked into DRAM designs in drivers or structures controlling rows of data cells or sets of sense amplifiers, as well as addressing errors.
 
 ## Fault Classes Captured in ECC_model
 
@@ -21,8 +27,8 @@ To reflect LPDDR6 realities while staying tractable, we group faults into five c
 - **Single-bit / 1 symbol** – Truly random bit flips within a byte.  The most common kind of errors, and correctable by internal SECDED (Hamming) ECC in the LPDDR6 chip.
 - **8-bit / 1 symbol** – Faults which affect a row of bits or controls on one half of a sub-array.  Up to 8 bits will be flipped, depending on the data pattern (since the fault will usually force the bits to zero or to one, which may agree or disagree with the data).
 - **16-bit / 2 symbols** – Two bytes, one on each side of a sub-array, commonly sharing a word-line driver or column select logic which control how the sense amplifiers are used.
-- **8-bit / 4 symbols** – Four bytes, which may occur if pairs of sub-array share control circuits.
-- **Other** – Alternates between 8 contiguous bytes (8-aligned) and 5 scattered bytes spanning unrelated sub-arrays. These capture the “everything else” space where LPDDR6 cannot correct the error and vendors rarely share statistics.
+- **32-bit / 4 symbols** – Four bytes, which may occur if pairs of sub-array share control circuits.
+- **Other** – Alternates between 8 contiguous bytes (8-aligned) and 5 scattered bytes spanning unrelated sub-arrays. These represent the “everything else” uncorrectable space where LPDDR6 cannot correct the error.
 
 ## Compare to the diagram
 
